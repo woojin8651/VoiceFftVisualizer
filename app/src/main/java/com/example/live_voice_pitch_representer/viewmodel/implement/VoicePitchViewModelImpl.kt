@@ -9,6 +9,7 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.util.Log
+import androidx.core.graphics.toColor
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
@@ -41,7 +42,7 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
     }
     private var mAudioRecord:AudioRecord? = null
     private val mAudioSource = MediaRecorder.AudioSource.MIC
-    private val mSampleRate = 8192
+    private val mSampleRate = 44100
     private val mChannelCount = AudioFormat.CHANNEL_IN_MONO
     private val mAudioFormat = AudioFormat.ENCODING_PCM_16BIT
     private val mBufferSize = AudioRecord.getMinBufferSize(mSampleRate,mChannelCount,mAudioFormat)
@@ -49,7 +50,9 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
     private lateinit var presentFFTSample:ShortArray
     private lateinit var canvas: Canvas
     private lateinit var drawMap: Bitmap
-    private val paint = Paint(Color.BLUE)
+    private val paint = Paint().apply {
+        color = Color.BLUE
+    }
 
     private val _isRecording = MutableLiveData<Boolean>();
     val isRecording:LiveData<Boolean> get() = _isRecording;
@@ -64,7 +67,7 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
     override fun audioConfigSet() {
         _isRecording.value = false;
         _presentPitch.value = 0;
-        drawMap = Bitmap.createBitmap(512,256,Bitmap.Config.ARGB_8888)
+        drawMap = Bitmap.createBitmap(256,256,Bitmap.Config.ARGB_8888)
         _grapgh.value = drawMap
         canvas = Canvas(drawMap)
         presentFFTSample = ShortArray(mBlockSize)
@@ -79,9 +82,13 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
     }
     private fun drawing(mag:DoubleArray){
         canvas.drawColor(Color.WHITE)
-        mag.indices.forEach {
-            canvas.drawLine(it.toFloat(), (255.0-mag[it]).toFloat(),it.toFloat(),255.0.toFloat(),paint,)
+        run{
+            mag.indices.forEach {
+                if(it.toFloat()>255.0) return@run
+                canvas.drawLine(it.toFloat(), (255.0-mag[it]).toFloat(),it.toFloat(),255.0.toFloat(),paint,)
+            }
         }
+
         _grapgh.postValue(drawMap)
     }
     private fun recordAndComputePitch() {
@@ -93,7 +100,6 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
         }
     }
     private fun recording(){
-        Log.d(TAG,"size :$mBufferSize")
         var readData = ShortArray(mBlockSize)
         Observable.create<PCMReturn>{
             while(isRecording.value == true){
@@ -106,7 +112,6 @@ class VoicePitchViewModelImpl:VoicePitchViewModel,ViewModel() {
             it.onComplete()
         }.subscribeOn(Schedulers.io())
             .subscribe{
-                Log.d(TAG,"sample "+it.size)
                 drawing(fftAnalyze(it.size,it.buffer))
             }
     }
